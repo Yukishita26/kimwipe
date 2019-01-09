@@ -1,26 +1,8 @@
 from PIL import Image as img
 import numpy as np
 import glob
-
-kimwipes = [np.array(img.open(name)).reshape((-1,)) for name in glob.glob("./images/kimwipe/*")]
-likekimwipes = [np.array(img.open(name)).reshape((-1,)) for name in glob.glob("./images/likekimwipe/*")]
-verykimwipes = [np.array(img.open(name)).reshape((-1,)) for name in glob.glob("./images/verykimwipe/*")]
-notkimwipes = [np.array(img.open(name)).reshape((-1,)) for name in glob.glob("./images/notkimwipe/*")]
-
-features = np.array(kimwipes + notkimwipes)
-labels = np.concatenate([np.zeros(len(kimwipes)),np.ones(len(notkimwipes))])
-features2 = np.array(verykimwipes + likekimwipes + notkimwipes)
-labels2 = np.concatenate([np.ones(len(verykimwipes))*2,np.ones(len(likekimwipes)),np.zeros(len(notkimwipes))])
-
-print(features.shape, labels.shape)
-print(features2.shape, labels2.shape)
-
-from sklearn.model_selection import train_test_split
-from sklearn.decomposition import PCA
-#from sklearn.neural_network import MLPClassifier
-#from sklearn.model_selection import GridSearchCV
 import pickle
-
+import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.tree import ExtraTreeRegressor
@@ -245,51 +227,24 @@ def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
         return plt
 
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.decomposition import NMF
 
-from sklearn.model_selection import KFold
-def cross_val_scores(X, y, clf, cv=5):
-    kf = KFold(n_splits=cv)
-    print("called")
-    trains = []
-    tests = []
-    for train_i, test_i in kf.split(X):
-        train_x, train_y, test_x, test_y = X[train_i], y[train_i], X[test_i], y[test_i]
-        clf.fit(train_x, train_y)
-        trains += [clf.score(train_x, train_y)]
-        tests += [clf.score(test_x, test_y)]
-        print("i")
-    return np.array(trains), np.array(tests)
+with open('classifier.bin', mode='rb') as f:
+    clf = pickle.load(f)
 
-if 0:
-    s_max=0
-    s_maxi=-1
-    for i in [0]:
-        print(i)
-        if i==0:
-            tranced = features
-        else:
-            #nmf = NMF(n_components=i, init='random', random_state=0, tol=0, max_iter=2000)
-            #tranced = nmf.fit_transform(features)
-            pca = PCA(n_components=i)
-            tranced = pca.fit_transform(features2)
-        print("PCA has completed")
-        #train_x, test_x, train_y, test_y = train_test_split(tranced, labels, test_size=0.2, random_state=0)
-        clf = ExtendedForestClassifier(random_state=0, boosting=False, bootstrap=True, bootstrap_features=True, n_estimators=10)
-        #clf.fit(train_x, train_y)
-        trains, tests = cross_val_scores(features2, labels2, clf)
-        print("train", trains.mean())
-        print("test", tests.mean())
-        if tests.mean()>s_max:
-            s_max = tests.mean()
-            s_maxi = i
-    print(s_maxi, s_max)
-
-
-clf = ExtendedForestClassifier(random_state=0, 
-                                boosting=False, bootstrap=True, bootstrap_features=True, n_estimators=100)
-clf.fit(features2, labels2)
-with open('classifier.bin', mode='wb') as f:
-    pickle.dump(clf, f)
-print(clf.score(features2, labels2))
-
+testdir = glob.glob("./images/tester/*")
+testimgs = [np.array(img.open(name)).reshape((-1,)) for name in testdir]
+testname = [s[16:] for s in testdir]
+import shutil
+for i,img in enumerate(testimgs):
+    ps = [est.predict([img])[0] for est in clf.estimators_]# + ([clf.predict([img])[0]]*10)
+    #print(testname[i], ps, clf.predict([img])[0])
+    #plt.imshow(img.reshape(64,64,3))
+    #plt.title("{}% Kimwipe!".format(100-int(100*sum(ps)/(len(ps)))))
+    #plt.show()
+    print("{} is {}% Kimwipe!".format(testname[i], 100-int(100*sum(ps)/(len(ps)))), clf.predict([img])[0])
+    if clf.predict([img])[0]==2:
+        shutil.copy2(testdir[i], "./kim/"+testname[i])
+    elif clf.predict([img])[0]==1:
+        shutil.copy2(testdir[i], "./lik/"+testname[i])
+    else:
+        shutil.copy2(testdir[i], "./not/"+testname[i])
